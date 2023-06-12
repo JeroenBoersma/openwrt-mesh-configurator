@@ -1,1 +1,3 @@
 /.env
+/authorized_keys
+/files/*.ipk
