@@ -8,8 +8,23 @@ USER = root
 SSH = ssh -l $(USER) $(HOST)
 
 # on the route install batctl-defauld
-PACKAGES_INSTALL = wpad-mesh-wolfssl batman-adv
+PACKAGES_INSTALL = wpad-mesh-wolfssl kmod-batman-adv
 PACKAGES_REMOVAL = wpad-basic-wolfssl
+
+CONFIG_WIRELESS = /etc/config/wireless
+CONFIG_NETWORK = /etc/config/network
+
+INTERNET_IFACE = wifinet2
+INTERNET_DEVICE = radio1
+INTERNET_MODE = sta
+INTERNET_NETWORK = wwan
+INTERNET_SSID = my-ssid
+INTERNET_ENC = psk2
+INTERNET_KEY = my-password
+INTERNET_PROTO = dhcp
+
+HAS_INTERNET := $(shell $(SSH) ping -c1 www.openwrt.org >/dev/null && echo 1 || echo 0)
+HAS_WLAN := $(shell $(SSH) grep '$(INTERNET_SSID)' $(CONFIG_WIRELESS) >/dev/null && echo 1 || echo 0)
 
 .PHONY: all
 all:
@@ -30,6 +45,10 @@ halt:
 ping:
 	ping $(HOST)
 
+.PHONY: route
+route:
+	watch ip route
+
 .PHONY: clean-knownhosts
 clean-knownhosts: $(HOME)/.ssh/known_hosts
 	ssh-keygen -f "$(HOME)/.ssh/known_hosts" -R "$(HOST)"
@@ -37,7 +56,7 @@ clean-knownhosts: $(HOME)/.ssh/known_hosts
 .PHONY: config-ssh
 config-ssh: ssh-keys passwd $(CONFIG_PATH)dropbear
 	scp $(CONFIG_PATH)dropbear $(USER)@$(HOST):/etc/config/dropbear
-	$(SSH) uci commit
+	$(SSH) /etc/init.d/dropbear restart
 
 .PHONY: ssh-keys
 ssh-keys: authorized_keys
@@ -56,10 +75,28 @@ passwd:
 software: $(FILES_PATH)*.ipk
 	scp $(FILES_PATH)*.ipk $(USER)@$(HOST):./
 	$(SSH) opkg update
-	$(SSH) install --download-only $(PACKAGES_INSTALL)
+	$(SSH) opkg install --download-only $(PACKAGES_INSTALL)
 ifneq ($(PACKAGES_REMOVAL),)
-	$(SSH) remove $(PACKAGES_REMOVAL)
+	$(SSH) opkg remove $(PACKAGES_REMOVAL)
 endif
-	$(SSH) install $(PACKAGES_INSTALL)
-	$(SSH) install '*.ipk'
+	$(SSH) opkg install $(PACKAGES_INSTALL)
+	$(SSH) opkg install '*.ipk'
+	$(SSH) rm '*.ipk'
+
+.PHONY: wifi
+wifi:
+ifeq ($(HAS_WLAN),0)
+	echo "config wifi-iface '$(INTERNET_IFACE)'\n\
+		option device '$(INTERNET_DEVICE)'\n\
+		option mode '$(INTERNET_MODE)'\n\
+		option network '$(INTERNET_NETWORK)'\n\
+		option ssid '$(INTERNET_SSID)'\n\
+		option encryption '$(INTERNET_ENC)'\n\
+		option key '$(INTERNET_KEY)'\n\
+" | $(SSH) 'tee -a $(CONFIG_WIRELESS)'
+	echo "config interface '$(INTERNET_NETWORK)'\n\
+		option proto '$(INTERNET_PROTO)'\n\
+" | $(SSH) 'tee -a $(CONFIG_NETWORK)'
+	$(SSH) /etc/init.d/network restart
+endif
 
