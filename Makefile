@@ -14,17 +14,17 @@ PACKAGES_REMOVAL = wpad-basic-wolfssl
 CONFIG_WIRELESS = /etc/config/wireless
 CONFIG_NETWORK = /etc/config/network
 
-INTERNET_IFACE = wifinet2
-INTERNET_DEVICE = radio1
-INTERNET_MODE = sta
-INTERNET_NETWORK = wwan
-INTERNET_SSID = my-ssid
-INTERNET_ENC = psk2
-INTERNET_KEY = my-password
-INTERNET_PROTO = dhcp
+W_IFACE = wifinet2
+W_MODE = sta
+W_DEVICE = radio1
+W_SSID = my-ssid
+W_ENC = psk2
+W_KEY = my-password
+NETWORK = wwan
+N_PROTO = dhcp
 
-HAS_INTERNET := $(shell $(SSH) ping -c1 www.openwrt.org >/dev/null && echo 1 || echo 0)
-HAS_WLAN := $(shell $(SSH) grep '$(INTERNET_SSID)' $(CONFIG_WIRELESS) >/dev/null && echo 1 || echo 0)
+HAS_INTERNET ?= $(shell $(SSH) ping -c1 www.openwrt.org >/dev/null && echo 1 || echo 0)
+HAS_WLAN ?= $(shell $(SSH) grep '$(W_SSID)' $(CONFIG_WIRELESS) >/dev/null && echo 1 || echo 0)
 
 .PHONY: all
 all:
@@ -84,27 +84,66 @@ endif
 	$(SSH) rm '*.ipk'
 
 .PHONY: wifi
-wifi:
-ifeq ($(HAS_WLAN),0)
-	echo "config wifi-iface '$(INTERNET_IFACE)'\n\
-		option device '$(INTERNET_DEVICE)'\n\
-		option mode '$(INTERNET_MODE)'\n\
-		option network '$(INTERNET_NETWORK)'\n\
-		option ssid '$(INTERNET_SSID)'\n\
-		option encryption '$(INTERNET_ENC)'\n\
-		option key '$(INTERNET_KEY)'\n\
-" | $(SSH) 'tee -a $(CONFIG_WIRELESS)'
-	echo "config interface '$(INTERNET_NETWORK)'\n\
-		option proto '$(INTERNET_PROTO)'\n\
-" | $(SSH) 'tee -a $(CONFIG_NETWORK)'
-	$(SSH) /etc/init.d/network restart
-endif
+wifi: W_MODE=sta
+wifi: SERVICE=network
+wifi: ACTION=restart
+wifi: wireless network commit service
 
-.PHONY: wifi-reset
-wifi-reset:
+.PHONY: wifi-del
+wifi-delete: W_MODE=sta
+wifi-delete: SERVICE=network
+wifi-delete: ACTION=restart
+wifi-delete: wireless-delete network-delete commit service
+
+.PHONY: mesh
+mesh:
+
+.PHONY: wireless
+wireless:
 ifeq ($(HAS_WLAN),1)
-	$(SSH) uci delete wireless.$(INTERNET_IFACE)
-	$(SSH) uci delete network.$(INTERNET_NETWORK)
-	$(SSH) uci commit
-	$(SSH) /etc/init.d/network restart
+	exit 0
 endif
+	@echo "config wifi-iface '$(W_IFACE)'\n\
+		option device '$(W_DEVICE)'\n\
+		option mode '$(W_MODE)'\n\
+		option encryption '$(W_ENC)'" \
+		| $(SSH) 'tee -a $(CONFIG_WIRELESS)'
+ifneq ($(W_MESH_ID),)
+	@echo "	option mesh_id '$(W_MESH_ID)'\n\
+		option mesh_rssi_threshold '0'\n\
+		option mesh_fwding '0'" \
+	   	| $(SSH) 'tee -a $(CONFIG_WIRELESS)'
+endif
+ifneq ($(NETWORK),)
+	@echo "	option network '$(NETWORK)'" \
+	   	| $(SSH) 'tee -a $(CONFIG_WIRELESS)'
+endif
+ifneq ($(W_SSID),)
+	@echo "	option ssid '$(W_SSID)'" \
+	   	| $(SSH) 'tee -a $(CONFIG_WIRELESS)'
+endif
+	@echo "	option key '$(W_KEY)'\n\n" \
+		| $(SSH) 'tee -a $(CONFIG_WIRELESS)'
+
+.PHONY: wireless-delete
+wireless-delete:
+	$(SSH) uci delete wireless.$(W_IFACE)
+
+.PHONY: network
+network:
+	@echo "config interface '$(NETWORK)'\n\
+		option proto '$(N_PROTO)'\n\
+" | $(SSH) 'tee -a $(CONFIG_NETWORK)'
+
+.PHONY: network-delete
+network-delete:
+	$(SSH) uci delete network.$(NETWORK)
+
+.PHONY: commit
+commit:
+	$(SSH) uci commit
+
+.PHONY: service
+service:
+	$(SSH) /etc/init.d/$(SERVICE) $(ACTION)
+
