@@ -100,3 +100,11 @@ ifeq ($(HAS_WLAN),0)
 	$(SSH) /etc/init.d/network restart
 endif
 
+.PHONY: wifi-reset
+wifi-reset:
+ifeq ($(HAS_WLAN),1)
+	$(SSH) uci delete wireless.$(INTERNET_IFACE)
+	$(SSH) uci delete network.$(INTERNET_NETWORK)
+	$(SSH) uci commit
+	$(SSH) /etc/init.d/network restart
+endif
