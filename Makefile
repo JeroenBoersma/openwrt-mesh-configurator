@@ -10,7 +10,8 @@ SSH_KEY_FILE = $(HOME)/.ssh/id_$(SSH_KEY_TYPE)
 
 SSH = ssh -l $(SSH_USER) $(SSH_HOST)
 
-# on the route install batctl-defauld
+# on the route install batctl-default
+OPKG_OPTIONAL_OPTIONS = --no-check-certificate
 PACKAGES_INSTALL = wpad-mesh-wolfssl kmod-batman-adv
 PACKAGES_REMOVAL = wpad-basic-wolfssl
 
@@ -87,10 +88,9 @@ passwd:
 	cp .env.dist .env
 
 .PHONY: software
-software: $(FILES_PATH)*.ipk
+software: update $(FILES_PATH)*.ipk
 	scp $(FILES_PATH)*.ipk $(SSH_USER)@$(SSH_HOST):./
-	$(SSH) opkg update
-	$(SSH) opkg install --download-only $(PACKAGES_INSTALL)
+	$(SSH) opkg install --download-only $(PACKAGES_INSTALL) $(OPKG_OPTIONAL_OPTIONS)
 ifneq ($(PACKAGES_REMOVAL),)
 	$(SSH) opkg remove $(PACKAGES_REMOVAL)
 endif
@@ -100,11 +100,11 @@ endif
 
 .PHONY: update
 update:
-	$(SSH) opkg update
+	$(SSH) opkg update $(OPKG_OPTIONAL_OPTIONS)
 
 .PHONY: upgrade
 upgrade:
-	$(SSH) opkg upgrade $(shell $(SSH) opkg list-upgradable | sed -se 's/ .*$$//')
+	$(SSH) opkg upgrade $(shell $(SSH) opkg list-upgradable | sed -se 's/ .*$$//') $(OPKG_OPTIONAL_OPTIONS)
 
 .PHONY: wifi
 wifi: W_IFACE=wifi
