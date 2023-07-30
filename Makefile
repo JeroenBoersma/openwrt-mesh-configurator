@@ -29,6 +29,8 @@ N_PROTO = dhcp
 HOSTNAME = Accesspoint
 DUMB_SERVICES = firewall odhcpd dnsmasq
 
+DEFAULT_ROUTE = 192.168.1.1
+
 HAS_INTERNET ?= $(shell $(SSH) ping -c1 www.openwrt.org >/dev/null && echo 1 || echo 0)
 HAS_WLAN ?= $(shell $(SSH) grep '$(W_SSID)' $(CONFIG_WIRELESS) >/dev/null && echo 1 || echo 0)
 
@@ -64,6 +66,10 @@ config-ssh: ssh-keys passwd $(CONFIG_PATH)dropbear
 	scp $(CONFIG_PATH)dropbear $(SSH_USER)@$(SSH_HOST):/etc/config/dropbear
 	$(SSH) /etc/init.d/dropbear restart
 
+.PHONY: config-luci
+config-luci:
+	scp $(CONFIG_PATH)luci $(SSH_USER)@$(SSH_HOST):/etc/config/luci
+
 .PHONY: ssh-keys
 ssh-keys: authorized_keys
 	scp authorized_keys $(SSH_USER)@$(SSH_HOST):/etc/dropbear/authorized_keys
@@ -91,6 +97,14 @@ endif
 	$(SSH) opkg install $(PACKAGES_INSTALL)
 	$(SSH) opkg install '*.ipk'
 	$(SSH) rm '*.ipk'
+
+.PHONY: update
+update:
+	$(SSH) opkg update
+
+.PHONY: upgrade
+upgrade:
+	$(SSH) opkg upgrade $(shell $(SSH) opkg list-upgradable | sed -se 's/ .*$$//')
 
 .PHONY: wifi
 wifi: W_IFACE=wifi
@@ -187,6 +201,15 @@ service:
 hostname:
 	$(SSH) uci set 'system.@system[0].hostname=$(HOSTNAME)'
 	$(SSH) uci set 'uhttpd.defaults.commonname=$(HOSTNAME)'
+
+
+.PHONY: default-route-add
+default-route-add:
+	$(SSH) ip route add default via $(DEFAULT_ROUTE)
+
+.PHONY: default-route-remove
+default-route-remove:
+	$(SSH) ip route del default
 
 .PHONY: dumb-services
 dumb-services:
