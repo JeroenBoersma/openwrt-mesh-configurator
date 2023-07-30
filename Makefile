@@ -2,10 +2,13 @@
 CONFIG_PATH = config/
 FILES_PATH = files/
 
-HOST = 192.168.1.1
-USER = root
+SSH_HOST = 192.168.1.1
+SSH_USER = root
 
-SSH = ssh -l $(USER) $(HOST)
+SSH_KEY_TYPE = id25519
+SSH_KEY_FILE = $(HOME)/.ssh/id_$(SSH_KEY_TYPE)
+
+SSH = ssh -l $(SSH_USER) $(SSH_HOST)
 
 # on the route install batctl-defauld
 PACKAGES_INSTALL = wpad-mesh-wolfssl kmod-batman-adv
@@ -46,7 +49,7 @@ halt:
 
 .PHONY: ping
 ping:
-	ping $(HOST)
+	ping $(SSH_HOST)
 
 .PHONY: route
 route:
@@ -54,20 +57,23 @@ route:
 
 .PHONY: clean-knownhosts
 clean-knownhosts: $(HOME)/.ssh/known_hosts
-	ssh-keygen -f "$(HOME)/.ssh/known_hosts" -R "$(HOST)"
+	ssh-keygen -f "$(HOME)/.ssh/known_hosts" -R "$(SSH_HOST)"
 
 .PHONY: config-ssh
 config-ssh: ssh-keys passwd $(CONFIG_PATH)dropbear
-	scp $(CONFIG_PATH)dropbear $(USER)@$(HOST):/etc/config/dropbear
+	scp $(CONFIG_PATH)dropbear $(SSH_USER)@$(SSH_HOST):/etc/config/dropbear
 	$(SSH) /etc/init.d/dropbear restart
 
 .PHONY: ssh-keys
 ssh-keys: authorized_keys
-	scp authorized_keys $(USER)@$(HOST):/etc/dropbear/authorized_keys
+	scp authorized_keys $(SSH_USER)@$(SSH_HOST):/etc/dropbear/authorized_keys
+
+authorized_keys:
+	echo $(shell ssh-keygen -y -t $(SSH_KEY_TYPE) -f $(SSH_KEY_FILE)) $(USER)@$(shell hostname) > authorized_keys
 
 .PHONY: passwd
 passwd:
-	$(SSH) grep -c $(USER):: /etc/shadow && \
+	$(SSH) grep -c $(SSH_USER):: /etc/shadow && \
 		$(SSH) passwd || \
 		true
 
@@ -76,7 +82,7 @@ passwd:
 
 .PHONY: software
 software: $(FILES_PATH)*.ipk
-	scp $(FILES_PATH)*.ipk $(USER)@$(HOST):./
+	scp $(FILES_PATH)*.ipk $(SSH_USER)@$(SSH_HOST):./
 	$(SSH) opkg update
 	$(SSH) opkg install --download-only $(PACKAGES_INSTALL)
 ifneq ($(PACKAGES_REMOVAL),)
@@ -114,8 +120,9 @@ mesh-delete: ACTION=restart
 mesh-delete: wireless-delete commit service
 
 .PHONY: wireless
+wireless: WIRELESS_HAS_WLAN=$(HAS_WLAN)
 wireless:
-ifeq ($(HAS_WLAN),1)
+ifeq ($(WIRELESS_HAS_WLAN),1)
 	exit 0
 endif
 	@echo "config wifi-iface '$(W_IFACE)'\n\
